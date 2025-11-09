@@ -126,7 +126,7 @@ class GoogleSheetsService(ISpreadsheetRepository):
             if import_permit.customs_duty > 0:
                 debit_entries.append(
                     (
-                        "関税",
+                        "租税公課",
                         "",
                         float(import_permit.customs_duty),
                         f"{summary_base} 関税",
@@ -166,7 +166,7 @@ class GoogleSheetsService(ISpreadsheetRepository):
                     account_name,  # 借方勘定科目
                     "",  # 借方補助科目
                     "",  # 借方部門
-                    importer,  # 借方取引先
+                    "",  # 借方取引先
                     tax_category,  # 借方税区分
                     "",  # 借方インボイス
                     amount,  # 借方金額(円)
