@@ -1,4 +1,3 @@
-"""メインエントリーポイント"""
 import asyncio
 import logging
 import sys
@@ -15,7 +14,6 @@ from src.infrastructure.services.service_factory import ServiceFactory
 
 
 async def main() -> None:
-    """メイン処理"""
     logger: logging.Logger | None = None
     
     try:

@@ -1,17 +1,14 @@
-"""アプリケーション設定を表す値オブジェクト"""
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class DocumentType:
-    """ドキュメントタイプの定数"""
     INVOICE = "請求書"
     IMPORT_PERMIT = "輸入許可書"
 
 
 class ApplicationConfig(BaseModel):
-    """アプリケーション設定の値オブジェクト"""
 
     # ログ設定
     log_level: str = Field(default="INFO", description="ログレベル")
@@ -27,7 +24,6 @@ class ApplicationConfig(BaseModel):
     @field_validator("document_type_filter")
     @classmethod
     def validate_document_type_filter(cls, v: Optional[str]) -> Optional[str]:
-        """ドキュメントタイプフィルタのバリデーション"""
         if v is None:
             return None
         valid_types = [DocumentType.INVOICE, DocumentType.IMPORT_PERMIT]
@@ -38,7 +34,6 @@ class ApplicationConfig(BaseModel):
     @field_validator("max_download_links")
     @classmethod
     def validate_max_download_links(cls, v: Optional[int]) -> Optional[int]:
-        """最大ダウンロードリンク数のバリデーション"""
         if v is not None and v <= 0:
             return None
         return v

@@ -1,4 +1,3 @@
-"""ロギング設定を行うサービス"""
 import logging
 import sys
 from datetime import datetime
@@ -6,16 +5,9 @@ from pathlib import Path
 
 
 class LoggingSetup:
-    """ロギング設定を行うサービス"""
 
     @staticmethod
     def setup(log_level: str, project_root: Path) -> None:
-        """ロギングの設定
-        
-        Args:
-            log_level: ログレベル
-            project_root: プロジェクトルートディレクトリ
-        """
         level = getattr(logging, log_level.upper(), logging.INFO)
         
         # ログファイルの保存先ディレクトリを作成

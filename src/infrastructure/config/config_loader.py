@@ -1,4 +1,3 @@
-"""設定の読み込みを行うサービス"""
 import logging
 import os
 from pathlib import Path
@@ -11,26 +10,12 @@ from src.domain.value_objects.credentials import Credentials, GoogleDriveCredent
 
 
 class ConfigLoader:
-    """環境変数から設定を読み込むサービス"""
 
     def __init__(self, project_root: Path) -> None:
-        """初期化
-        
-        Args:
-            project_root: プロジェクトルートディレクトリ
-        """
         self.project_root = project_root
         self.logger = logging.getLogger(__name__)
 
     def load_config(self) -> ApplicationConfig:
-        """アプリケーション設定を読み込む
-        
-        Returns:
-            ApplicationConfig: アプリケーション設定
-            
-        Raises:
-            ValueError: 設定値が無効な場合
-        """
         load_dotenv()
         
         log_level = os.getenv("LOG_LEVEL", "INFO")
@@ -68,15 +53,6 @@ class ConfigLoader:
             raise ValueError(f"設定値が無効です: {str(e)}")
 
     def load_credentials(self) -> tuple[Credentials, GoogleDriveCredentials, str]:
-        """認証情報を環境変数から読み込む
-        
-        Returns:
-            tuple[Credentials, GoogleDriveCredentials, str]: 
-                海源物流認証情報、Google認証情報、ベースURL
-            
-        Raises:
-            ValueError: 必須の認証情報が設定されていない場合
-        """
         load_dotenv()
         
         username = os.getenv("KAIGEN_USERNAME")
@@ -114,14 +90,6 @@ class ConfigLoader:
         return credentials, google_credentials, base_url
 
     def _parse_max_download_links(self, value: Optional[str]) -> Optional[int]:
-        """最大ダウンロードリンク数をパースする
-        
-        Args:
-            value: 環境変数の値
-            
-        Returns:
-            Optional[int]: パースされた値、無効な場合はNone
-        """
         if not value:
             return None
         
@@ -140,14 +108,6 @@ class ConfigLoader:
             return None
 
     def _parse_document_type_filter(self, value: Optional[str]) -> Optional[str]:
-        """ドキュメントタイプフィルタをパースする
-        
-        Args:
-            value: 環境変数の値
-            
-        Returns:
-            Optional[str]: パースされた値、無効な場合はNone
-        """
         if not value:
             return None
         
@@ -161,14 +121,6 @@ class ConfigLoader:
         return value
 
     def _parse_sheet_id(self, value: Optional[str]) -> Optional[int]:
-        """シートIDをパースする
-        
-        Args:
-            value: 環境変数の値
-            
-        Returns:
-            Optional[int]: パースされた値、無効な場合はNone
-        """
         if not value:
             return None
         
