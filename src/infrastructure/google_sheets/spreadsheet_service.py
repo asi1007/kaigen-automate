@@ -1,5 +1,5 @@
-"""Googleスプレッドシートへの書き込みサービス"""
 import logging
+import re
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -242,12 +242,35 @@ class GoogleSheetsService(ISpreadsheetRepository):
                 body=body
             ).execute()
 
-            logger.info(
-                f"スプレッドシートへの書き込みが完了しました: "
-                f"{import_permit.permit_number} "
-                f"(更新セル数: {result.get('updates', {}).get('updatedCells', 0)}, "
-                f"追加行数: {len(values)})"
-            )
+            updated_range = result.get('updates', {}).get('updatedRange', '')
+            start_row = None
+            end_row = None
+            if updated_range:
+                match = re.search(r'!A(\d+):AA(\d+)', updated_range)
+                if match:
+                    start_row = int(match.group(1))
+                    end_row = int(match.group(2))
+
+            updates = result.get('updates', {})
+            context = {
+                "permit_number": import_permit.permit_number,
+                "updated_cells": updates.get('updatedCells', 0),
+                "added_rows": len(values),
+            }
+            
+            if start_row and end_row:
+                context["start_row"] = start_row
+                context["end_row"] = end_row
+                logger.info(
+                    f"スプレッドシートへの書き込みが完了しました: {import_permit.permit_number} "
+                    f"(追加行: {start_row}行目～{end_row}行目)",
+                    extra={"context": context}
+                )
+            else:
+                logger.info(
+                    f"スプレッドシートへの書き込みが完了しました: {import_permit.permit_number}",
+                    extra={"context": context}
+                )
 
         except HttpError as error:
             logger.error(f"スプレッドシートへの書き込み中にエラーが発生しました: {error}")
@@ -299,7 +322,7 @@ class GoogleSheetsService(ISpreadsheetRepository):
                     "",  # 借方補助科目
                     "",  # 借方部門
                     "",  # 借方取引先
-                    "",  # 借方税区分（対象外）
+                    "対象外",  # 借方税区分
                     "",  # 借方インボイス
                     total_amount,  # 借方金額(円)
                     0,  # 借方税額
@@ -373,12 +396,35 @@ class GoogleSheetsService(ISpreadsheetRepository):
                 body=body
             ).execute()
 
-            logger.info(
-                f"スプレッドシートへの書き込みが完了しました: "
-                f"{invoice.invoice_number} "
-                f"(更新セル数: {result.get('updates', {}).get('updatedCells', 0)}, "
-                f"追加行数: {len(values)})"
-            )
+            updated_range = result.get('updates', {}).get('updatedRange', '')
+            start_row = None
+            end_row = None
+            if updated_range:
+                match = re.search(r'!A(\d+):AA(\d+)', updated_range)
+                if match:
+                    start_row = int(match.group(1))
+                    end_row = int(match.group(2))
+
+            updates = result.get('updates', {})
+            context = {
+                "invoice_number": invoice.invoice_number,
+                "updated_cells": updates.get('updatedCells', 0),
+                "added_rows": len(values),
+            }
+            
+            if start_row and end_row:
+                context["start_row"] = start_row
+                context["end_row"] = end_row
+                logger.info(
+                    f"スプレッドシートへの書き込みが完了しました: {invoice.invoice_number} "
+                    f"(追加行: {start_row}行目～{end_row}行目)",
+                    extra={"context": context}
+                )
+            else:
+                logger.info(
+                    f"スプレッドシートへの書き込みが完了しました: {invoice.invoice_number}",
+                    extra={"context": context}
+                )
 
         except HttpError as error:
             logger.error(f"スプレッドシートへの書き込み中にエラーが発生しました: {error}")
