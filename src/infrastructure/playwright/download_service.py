@@ -28,6 +28,7 @@ class PlaywrightDownloadService(IDownloadRepository):
         download_dir: Path | None = None,
         base_url: str = "https://japan-kaigen.net",
         max_download_links: int | None = None,
+        document_type_filter: str | None = None,
     ):
         self.credentials = credentials
         if download_dir is None:
@@ -37,6 +38,7 @@ class PlaywrightDownloadService(IDownloadRepository):
             self.download_dir = Path(download_dir)
         self.base_url = base_url
         self.max_download_links = max_download_links
+        self.document_type_filter = document_type_filter  # "請求書" または "輸入許可書" または None
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.browser: Browser | None = None
         self.context: BrowserContext | None = None
@@ -337,6 +339,13 @@ class PlaywrightDownloadService(IDownloadRepository):
                 else:
                     detected_type = assumed_type
 
+                # フィルタリング: document_type_filterが設定されている場合、該当するタイプのみ処理
+                if self.document_type_filter and detected_type != self.document_type_filter:
+                    logger.info(f"フィルタリングによりスキップ: {detected_type} (フィルタ: {self.document_type_filter})")
+                    if file_path.exists():
+                        file_path.unlink()
+                    continue
+
                 results.append((file_path, detected_type))
                 logger.info(f"{detected_type} をダウンロード完了: {file_path.name}")
             
@@ -374,6 +383,13 @@ class PlaywrightDownloadService(IDownloadRepository):
                         detected_type = "輸入許可書"
                     else:
                         detected_type = "ダウンロード"
+
+                    # フィルタリング: document_type_filterが設定されている場合、該当するタイプのみ処理
+                    if self.document_type_filter and detected_type != self.document_type_filter:
+                        logger.info(f"フィルタリングによりスキップ: {detected_type} (フィルタ: {self.document_type_filter})")
+                        if file_path.exists():
+                            file_path.unlink()
+                        continue
 
                     results.append((file_path, detected_type))
                     logger.info(f"{detected_type} をダウンロード完了: {file_path.name}")

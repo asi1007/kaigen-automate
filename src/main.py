@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # プロジェクトルートをPythonパスに追加
@@ -21,13 +22,30 @@ from src.usecases.download_only_use_case import DownloadOnlyUseCase
 def setup_logging(log_level: str = "INFO") -> None:
     """ロギングの設定"""
     level = getattr(logging, log_level.upper(), logging.INFO)
+    
+    # ログファイルの保存先ディレクトリを作成
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+    
+    # ログファイル名にタイムスタンプを含める
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"app_{timestamp}.log"
+    
+    # ハンドラーの設定
+    handlers = [
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(log_file, encoding="utf-8"),
+    ]
+    
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-        ]
+        handlers=handlers
     )
+    
+    # ログファイルのパスを出力
+    logger = logging.getLogger(__name__)
+    logger.info(f"ログファイル: {log_file}")
 
 
 def load_credentials() -> tuple[Credentials, "GoogleDriveCredentials | None", str]:
@@ -101,12 +119,22 @@ async def main():
             except ValueError:
                 logger.warning(f"MAX_DOWNLOAD_LINKS の値が無効です: {max_download_links_str}。制限なしで実行します。")
         
+        # ドキュメントタイプフィルタの取得
+        document_type_filter = os.getenv("DOCUMENT_TYPE_FILTER")  # "請求書" または "輸入許可書" または None
+        if document_type_filter:
+            if document_type_filter not in ["請求書", "輸入許可書"]:
+                logger.warning(f"DOCUMENT_TYPE_FILTER の値が無効です: {document_type_filter}。フィルタリングを無効にします。")
+                document_type_filter = None
+            else:
+                logger.info(f"ドキュメントタイプフィルタ: {document_type_filter}")
+        
         # ダウンロードサービスの初期化
         logger.info("サービスの初期化を開始します...")
         download_service = PlaywrightDownloadService(
             credentials=credentials,
             base_url=base_url,
-            max_download_links=max_download_links
+            max_download_links=max_download_links,
+            document_type_filter=document_type_filter
         )
         logger.info(f"ダウンロードディレクトリ: {download_service.download_dir}")
         

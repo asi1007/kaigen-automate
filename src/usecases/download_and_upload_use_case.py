@@ -8,6 +8,7 @@ from src.domain.repositories.download_repository import IDownloadRepository
 from src.domain.repositories.upload_repository import IUploadRepository
 from src.domain.repositories.spreadsheet_repository import ISpreadsheetRepository
 from src.infrastructure.pdf_parser.import_permit_parser import ImportPermitParser
+from src.infrastructure.pdf_parser.invoice_parser import InvoiceParser
 
 if TYPE_CHECKING:
     from src.domain.value_objects.credentials import GoogleDriveCredentials
@@ -30,6 +31,7 @@ class DownloadAndUploadUseCase:
         self.google_credentials = google_credentials
         self.spreadsheet_repository = spreadsheet_repository
         self.import_permit_parser = ImportPermitParser() if spreadsheet_repository else None
+        self.invoice_parser = InvoiceParser() if spreadsheet_repository else None
 
     async def execute(self) -> List[Document]:
         """ドキュメントをダウンロードしてアップロードする
@@ -54,16 +56,19 @@ class DownloadAndUploadUseCase:
             logger.info(f"{len(documents)} 件のドキュメントをダウンロードしました")
             skip_file_paths = set()
             import_permit_dict = {}
+            invoice_dict = {}
             
-            # ステップ2: 輸入許可書の経理データ作成（スプレッドシートに出力）
-            if self.spreadsheet_repository and self.import_permit_parser:
-                logger.info("ステップ2: 輸入許可書の経理データ作成")
+            # ステップ2: 経理データ作成（スプレッドシートに出力）
+            if self.spreadsheet_repository:
+                logger.info("ステップ2: 経理データ作成")
                 import_permit_count = 0
+                invoice_count = 0
                 
                 for document in documents:
-                    # 輸入許可書のみ処理
-                    if document.document_type == "輸入許可書":
-                        try:
+                    try:
+                        folder_id = self.google_credentials.get_folder_id(document.document_type)
+                        
+                        if document.document_type == "輸入許可書" and self.import_permit_parser:
                             logger.info(
                                 f"経理データ作成中: {document.document_type} - {document.file_path.name}"
                             )
@@ -71,7 +76,6 @@ class DownloadAndUploadUseCase:
                             import_permit = self.import_permit_parser.parse(document.file_path)
                             import_permit_dict[document.file_path] = import_permit
 
-                            folder_id = self.google_credentials.get_folder_id(document.document_type)
                             exists_on_drive = await self.upload_repository.document_exists(
                                 document.file_path,
                                 folder_id,
@@ -91,15 +95,44 @@ class DownloadAndUploadUseCase:
                             logger.info(
                                 f"経理データ作成完了: {document.document_type} - {document.file_path.name}"
                             )
-                        except Exception as e:
-                            logger.error(
-                                f"経理データ作成失敗: {document.document_type} - {document.file_path.name} - {e}"
+                        elif document.document_type == "請求書" and self.invoice_parser:
+                            logger.info(
+                                f"経理データ作成中: {document.document_type} - {document.file_path.name}"
                             )
-                            # 1つのファイルの処理失敗でも処理を続行
-                            continue
+                            # PDFを解析
+                            invoice = self.invoice_parser.parse(document.file_path)
+                            invoice_dict[document.file_path] = invoice
+
+                            exists_on_drive = await self.upload_repository.document_exists(
+                                document.file_path,
+                                folder_id,
+                                invoice.issue_date
+                            )
+                            if exists_on_drive:
+                                logger.info(
+                                    f"Google Driveに既存のためスプレッドシート出力とアップロードをスキップします: "
+                                    f"{document.document_type} - {document.file_path.name}"
+                                )
+                                skip_file_paths.add(document.file_path)
+                                continue
+
+                            # スプレッドシートに出力
+                            await self.spreadsheet_repository.write_invoice(invoice)
+                            invoice_count += 1
+                            logger.info(
+                                f"経理データ作成完了: {document.document_type} - {document.file_path.name}"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"経理データ作成失敗: {document.document_type} - {document.file_path.name} - {e}"
+                        )
+                        # 1つのファイルの処理失敗でも処理を続行
+                        continue
                 
                 if import_permit_count > 0:
                     logger.info(f"経理データ作成完了: {import_permit_count} 件の輸入許可書を処理しました")
+                if invoice_count > 0:
+                    logger.info(f"経理データ作成完了: {invoice_count} 件の請求書を処理しました")
             
             # ステップ3: アップロード
             logger.info("ステップ3: Google Drive へのアップロード")
@@ -107,7 +140,7 @@ class DownloadAndUploadUseCase:
 
             for document in documents:
                 try:
-                    # 輸入許可書の場合は発行日を取得
+                    # 発行日を取得
                     issue_date = None
                     if document.document_type == "輸入許可書":
                         # 既に解析済みの場合はそれを使用
@@ -116,15 +149,33 @@ class DownloadAndUploadUseCase:
                         else:
                             # 解析されていない場合は解析する
                             try:
-                                import_permit = self.import_permit_parser.parse(document.file_path)
-                                import_permit_dict[document.file_path] = import_permit
-                                issue_date = import_permit.issue_date
+                                if self.import_permit_parser:
+                                    import_permit = self.import_permit_parser.parse(document.file_path)
+                                    import_permit_dict[document.file_path] = import_permit
+                                    issue_date = import_permit.issue_date
+                                else:
+                                    issue_date = document.download_datetime.date()
                             except Exception as e:
                                 logger.warning(f"日付取得失敗（ダウンロード日時を使用）: {e}")
-                                # 請求書の場合や解析失敗時はダウンロード日時を使用
+                                issue_date = document.download_datetime.date()
+                    elif document.document_type == "請求書":
+                        # 既に解析済みの場合はそれを使用
+                        if document.file_path in invoice_dict:
+                            issue_date = invoice_dict[document.file_path].issue_date
+                        else:
+                            # 解析されていない場合は解析する
+                            try:
+                                if self.invoice_parser:
+                                    invoice = self.invoice_parser.parse(document.file_path)
+                                    invoice_dict[document.file_path] = invoice
+                                    issue_date = invoice.issue_date
+                                else:
+                                    issue_date = document.download_datetime.date()
+                            except Exception as e:
+                                logger.warning(f"日付取得失敗（ダウンロード日時を使用）: {e}")
                                 issue_date = document.download_datetime.date()
                     else:
-                        # 請求書の場合はダウンロード日時を使用
+                        # その他の場合はダウンロード日時を使用
                         issue_date = document.download_datetime.date()
                     
                     folder_id = self.google_credentials.get_folder_id(document.document_type)

@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.domain.entities.import_permit import ImportPermit
+from src.domain.entities.invoice import Invoice
 from src.domain.repositories.spreadsheet_repository import ISpreadsheetRepository
 from src.infrastructure.google_drive.oauth_helper import OAuthHelper
 
@@ -244,6 +245,137 @@ class GoogleSheetsService(ISpreadsheetRepository):
             logger.info(
                 f"スプレッドシートへの書き込みが完了しました: "
                 f"{import_permit.permit_number} "
+                f"(更新セル数: {result.get('updates', {}).get('updatedCells', 0)}, "
+                f"追加行数: {len(values)})"
+            )
+
+        except HttpError as error:
+            logger.error(f"スプレッドシートへの書き込み中にエラーが発生しました: {error}")
+            raise
+
+    async def write_invoice(self, invoice: Invoice) -> None:
+        """請求書のデータをスプレッドシートに書き込む（マネーフォワード仕訳インポート形式・27列）"""
+        if not self.service:
+            raise RuntimeError("Google Sheetsサービスが初期化されていません")
+
+        logger.info(f"スプレッドシートに書き込み中: {invoice.invoice_number}")
+
+        try:
+            metadata = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"{self.sheet_name}!A2:A",
+                valueRenderOption="UNFORMATTED_VALUE"
+            ).execute()
+            values_in_sheet = metadata.get("values", [])
+            last_transaction_no = 0
+            for row in values_in_sheet:
+                if row:
+                    try:
+                        number_value = int(row[0])
+                        if number_value > last_transaction_no:
+                            last_transaction_no = number_value
+                    except (ValueError, TypeError):
+                        continue
+            transaction_no = last_transaction_no + 1
+
+            CREDIT_ACCOUNT = "普通預金"
+            CREDIT_SUB_ACCOUNT = "海源"
+
+            date_str = invoice.issue_date.strftime("%Y/%m/%d")
+            summary_base = f"請求書 {invoice.invoice_number}"
+            memo_base = f"請求書番号: {invoice.invoice_number}, 追跡番号: {invoice.tracking_number}"
+
+            values = []
+
+            # 請求書の合計金額を支払手数料として借方に計上
+            total_amount = float(invoice.total_amount)
+
+            if total_amount > 0:
+                # 借方行: 支払手数料
+                values.append([
+                    transaction_no,  # 取引No
+                    date_str,  # 取引日
+                    "支払手数料",  # 借方勘定科目
+                    "",  # 借方補助科目
+                    "",  # 借方部門
+                    "",  # 借方取引先
+                    "",  # 借方税区分（対象外）
+                    "",  # 借方インボイス
+                    total_amount,  # 借方金額(円)
+                    0,  # 借方税額
+                    "",  # 貸方勘定科目
+                    "",  # 貸方補助科目
+                    "",  # 貸方部門
+                    "",  # 貸方取引先
+                    "",  # 貸方税区分
+                    "",  # 貸方インボイス
+                    "",  # 貸方金額(円)
+                    0,  # 貸方税額
+                    summary_base,  # 摘要
+                    memo_base,  # 仕訳メモ
+                    "",  # タグ
+                    "",  # MF仕訳タイプ
+                    "",  # 決算整理仕訳
+                    "",  # 作成日時
+                    "",  # 作成者
+                    "",  # 最終更新日時
+                    "",  # 最終更新者
+                ])
+
+                # 貸方行: 普通預金（海源）
+                values.append([
+                    transaction_no,  # 取引No
+                    date_str,  # 取引日
+                    "",  # 借方勘定科目
+                    "",  # 借方補助科目
+                    "",  # 借方部門
+                    "",  # 借方取引先
+                    "",  # 借方税区分
+                    "",  # 借方インボイス
+                    "",  # 借方金額(円)
+                    0,  # 借方税額
+                    CREDIT_ACCOUNT,  # 貸方勘定科目
+                    CREDIT_SUB_ACCOUNT,  # 貸方補助科目（海源）
+                    "",  # 貸方部門
+                    "",  # 貸方取引先
+                    "",  # 貸方税区分
+                    "",  # 貸方インボイス
+                    total_amount,  # 貸方金額(円)
+                    0,  # 貸方税額
+                    f"{summary_base} 支払",  # 摘要
+                    f"{memo_base} (支払)",  # 仕訳メモ
+                    "",  # タグ
+                    "",  # MF仕訳タイプ
+                    "",  # 決算整理仕訳
+                    "",  # 作成日時
+                    "",  # 作成者
+                    "",  # 最終更新日時
+                    "",  # 最終更新者
+                ])
+
+            if not values:
+                logger.warning(f"書き込むデータがありません: {invoice.invoice_number}")
+                return
+
+            # スプレッドシートにデータを追加
+            body = {
+                'values': values
+            }
+
+            if not self.sheet_name:
+                raise RuntimeError("シート名が解決されていません")
+
+            result = self.service.spreadsheets().values().append(
+                spreadsheetId=self.spreadsheet_id,
+                range=f'{self.sheet_name}!A2:AA',  # 1行目はヘッダーのためA2から書き込む
+                valueInputOption='RAW',
+                insertDataOption='INSERT_ROWS',
+                body=body
+            ).execute()
+
+            logger.info(
+                f"スプレッドシートへの書き込みが完了しました: "
+                f"{invoice.invoice_number} "
                 f"(更新セル数: {result.get('updates', {}).get('updatedCells', 0)}, "
                 f"追加行数: {len(values)})"
             )

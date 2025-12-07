@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 
 from src.domain.entities.import_permit import ImportPermit
+from src.domain.entities.invoice import Invoice
 
 
 class ISpreadsheetRepository(ABC):
@@ -13,6 +14,18 @@ class ISpreadsheetRepository(ABC):
 
         Args:
             import_permit: 輸入許可書エンティティ
+
+        Raises:
+            Exception: 書き込みに失敗した場合
+        """
+        pass
+
+    @abstractmethod
+    async def write_invoice(self, invoice: Invoice) -> None:
+        """請求書のデータをスプレッドシートに書き込む
+
+        Args:
+            invoice: 請求書エンティティ
 
         Raises:
             Exception: 書き込みに失敗した場合

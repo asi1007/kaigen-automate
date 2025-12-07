@@ -47,3 +47,7 @@ credentials.json
 token.json
 service_account.json
 
+# Logs
+logs/
+*.log
+
