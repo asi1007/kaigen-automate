@@ -51,3 +51,6 @@ service_account.json
 logs/
 *.log
 
+# pytest
+.pytest_cache/
+
